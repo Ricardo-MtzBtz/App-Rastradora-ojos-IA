@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Detección de Rostro</string>
+    <string name="StatedCon_1">Buscando Conexión con ESP32</string>
+    <string name="StatedCon_2">Esp32 Desconectado</string>
+    <string name="StatedCon_3">Esp32 Conectado</string>
+
 </resources>

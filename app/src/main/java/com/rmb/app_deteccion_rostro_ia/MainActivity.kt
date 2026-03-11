@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.widget.FrameLayout
+import android.widget.TextView
 
 import androidx.activity.ComponentActivity
 import androidx.camera.core.*
@@ -23,20 +24,31 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var previewView: PreviewView
     private lateinit var overlay: FaceOverlay
+    private lateinit var statusText: TextView
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    private val bluetoothManager = BluetoothManager()
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+
+        super.onCreate(savedInstanceState)
+        requestPermissions()
         previewView = PreviewView(this)
         overlay = FaceOverlay(this)
+
+        statusText = TextView(this)
+        statusText.text = getString(R.string.StatedCon_1) ?: "@string/StatedCon_1"
+        statusText.textSize = 20f
 
         val layout = FrameLayout(this)
         layout.addView(previewView)
         layout.addView(overlay)
+        layout.addView(statusText)
 
         setContentView(layout)
+
+        connectBluetooth()
 
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -53,7 +65,33 @@ class MainActivity : ComponentActivity() {
                 arrayOf(Manifest.permission.CAMERA),
                 1
             )
+
         }
+
+    }
+
+    private fun connectBluetooth() {
+
+        Thread {
+
+            val connected = bluetoothManager.connect()
+
+            runOnUiThread {
+
+                if (connected) {
+
+                    statusText.text = getString(R.string.StatedCon_3)
+
+                } else {
+
+                    statusText.text = getString(R.string.StatedCon_2)
+
+                }
+
+            }
+
+        }.start()
+
     }
 
     private fun startCamera() {
@@ -65,11 +103,15 @@ class MainActivity : ComponentActivity() {
             val cameraProvider = cameraProviderFuture.get()
 
             val preview = Preview.Builder().build().also {
+
                 it.setSurfaceProvider(previewView.surfaceProvider)
+
             }
 
             val imageAnalyzer = ImageAnalysis.Builder()
+
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+
                 .build()
 
             imageAnalyzer.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -83,15 +125,31 @@ class MainActivity : ComponentActivity() {
             cameraProvider.unbindAll()
 
             cameraProvider.bindToLifecycle(
+
                 this,
                 cameraSelector,
                 preview,
                 imageAnalyzer
+
             )
 
         }, ContextCompat.getMainExecutor(this))
     }
+    private fun requestPermissions() {
 
+        val permissions = arrayOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        ActivityCompat.requestPermissions(
+            this,
+            permissions,
+            1
+        )
+    }
     private fun processImage(imageProxy: ImageProxy) {
 
         val mediaImage = imageProxy.image
@@ -115,9 +173,10 @@ class MainActivity : ComponentActivity() {
 
                     if (faces.isNotEmpty()) {
 
-                        // Seleccionar la cara más grande (la más cercana)
                         val face = faces.maxByOrNull {
+
                             it.boundingBox.width() * it.boundingBox.height()
+
                         }
 
                         face?.let {
@@ -129,12 +188,18 @@ class MainActivity : ComponentActivity() {
 
                             Log.d("FACE", "X:$centerX Y:$centerY")
 
+                            bluetoothManager.sendCoordinates(
+                                centerX,
+                                centerY
+                            )
+
                             runOnUiThread {
 
                                 overlay.faceRect = box
                                 overlay.invalidate()
 
                             }
+
                         }
 
                     } else {
@@ -155,6 +220,8 @@ class MainActivity : ComponentActivity() {
                     imageProxy.close()
 
                 }
+
         }
+
     }
 }
