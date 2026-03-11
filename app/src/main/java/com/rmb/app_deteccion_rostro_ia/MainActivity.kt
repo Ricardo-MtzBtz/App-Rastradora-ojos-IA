@@ -3,18 +3,16 @@ package com.rmb.app_deteccion_rostro_ia
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import android.util.Log
+import android.widget.FrameLayout
 
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.activity.ComponentActivity
 import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 
-import android.view.ViewGroup.LayoutParams
-import android.widget.FrameLayout
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.*
@@ -23,14 +21,22 @@ import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var previewView: PreviewView
+    private lateinit var overlay: FaceOverlay
+
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val previewView = PreviewView(this)
+        previewView = PreviewView(this)
+        overlay = FaceOverlay(this)
 
-        setContentView(previewView)
+        val layout = FrameLayout(this)
+        layout.addView(previewView)
+        layout.addView(overlay)
+
+        setContentView(layout)
 
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -38,7 +44,7 @@ class MainActivity : ComponentActivity() {
             ) == PackageManager.PERMISSION_GRANTED
         ) {
 
-            startCamera(previewView)
+            startCamera()
 
         } else {
 
@@ -47,11 +53,10 @@ class MainActivity : ComponentActivity() {
                 arrayOf(Manifest.permission.CAMERA),
                 1
             )
-
         }
     }
 
-    private fun startCamera(previewView: PreviewView) {
+    private fun startCamera() {
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
@@ -63,7 +68,9 @@ class MainActivity : ComponentActivity() {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-            val imageAnalyzer = ImageAnalysis.Builder().build()
+            val imageAnalyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
 
             imageAnalyzer.setAnalyzer(cameraExecutor) { imageProxy ->
 
@@ -106,21 +113,47 @@ class MainActivity : ComponentActivity() {
 
                 .addOnSuccessListener { faces ->
 
-                    for (face in faces) {
+                    if (faces.isNotEmpty()) {
 
-                        val box = face.boundingBox
+                        // Seleccionar la cara más grande (la más cercana)
+                        val face = faces.maxByOrNull {
+                            it.boundingBox.width() * it.boundingBox.height()
+                        }
 
-                        val centerX = box.centerX()
-                        val centerY = box.centerY()
+                        face?.let {
 
-                        Log.d("FACE", "X:$centerX Y:$centerY")
+                            val box = it.boundingBox
+
+                            val centerX = box.centerX()
+                            val centerY = box.centerY()
+
+                            Log.d("FACE", "X:$centerX Y:$centerY")
+
+                            runOnUiThread {
+
+                                overlay.faceRect = box
+                                overlay.invalidate()
+
+                            }
+                        }
+
+                    } else {
+
+                        runOnUiThread {
+
+                            overlay.faceRect = null
+                            overlay.invalidate()
+
+                        }
 
                     }
 
                 }
 
                 .addOnCompleteListener {
+
                     imageProxy.close()
+
                 }
         }
     }
