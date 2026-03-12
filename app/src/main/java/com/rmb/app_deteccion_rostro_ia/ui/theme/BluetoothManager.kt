@@ -71,4 +71,18 @@ class BluetoothManager {
         }
 
     }
+
+    fun sendBlink(){
+
+        try {
+
+            outputStream?.write("B\n".toByteArray())
+
+        } catch (e: Exception) {
+
+            e.printStackTrace()
+
+        }
+
+    }
 }

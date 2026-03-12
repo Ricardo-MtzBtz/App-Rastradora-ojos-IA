@@ -3,8 +3,7 @@ package com.rmb.app_deteccion_rostro_ia
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.util.Log
-import android.widget.FrameLayout
+import android.widget.Button
 import android.widget.TextView
 
 import androidx.activity.ComponentActivity
@@ -25,28 +24,51 @@ class MainActivity : ComponentActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var overlay: FaceOverlay
     private lateinit var statusText: TextView
+    private lateinit var switchCameraButton: Button
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     private val bluetoothManager = BluetoothManager()
 
+    private var cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+
+    private var lastBlinkTime = 0L
+    private val blinkCooldown = 800
+
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
-        requestPermissions()
-        previewView = PreviewView(this)
+
+        setContentView(R.layout.activity_main)
+
+        // =============================
+        // CONECTAR VISTAS DEL XML
+        // =============================
+
+        previewView = findViewById(R.id.previewView)
+        statusText = findViewById(R.id.txtEstado)
+        switchCameraButton = findViewById(R.id.btnSwitchCamera)
+
         overlay = FaceOverlay(this)
+        previewView.overlay.add(overlay)
 
-        statusText = TextView(this)
-        statusText.text = getString(R.string.StatedCon_1) ?: "@string/StatedCon_1"
-        statusText.textSize = 20f
+        requestPermissions()
 
-        val layout = FrameLayout(this)
-        layout.addView(previewView)
-        layout.addView(overlay)
-        layout.addView(statusText)
+        // =============================
+        // BOTON CAMBIAR CAMARA
+        // =============================
 
-        setContentView(layout)
+        switchCameraButton.setOnClickListener {
+
+            cameraSelector =
+                if (cameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA)
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                else
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+
+            startCamera()
+
+        }
 
         connectBluetooth()
 
@@ -57,14 +79,6 @@ class MainActivity : ComponentActivity() {
         ) {
 
             startCamera()
-
-        } else {
-
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.CAMERA),
-                1
-            )
 
         }
 
@@ -78,15 +92,11 @@ class MainActivity : ComponentActivity() {
 
             runOnUiThread {
 
-                if (connected) {
-
-                    statusText.text = getString(R.string.StatedCon_3)
-
-                } else {
-
-                    statusText.text = getString(R.string.StatedCon_2)
-
-                }
+                statusText.text =
+                    if (connected)
+                        getString(R.string.StatedCon_3)
+                    else
+                        getString(R.string.StatedCon_2)
 
             }
 
@@ -102,13 +112,15 @@ class MainActivity : ComponentActivity() {
 
             val cameraProvider = cameraProviderFuture.get()
 
-            val preview = Preview.Builder().build().also {
+            val preview = Preview.Builder()
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                .build()
 
-                it.setSurfaceProvider(previewView.surfaceProvider)
-
-            }
+            preview.setSurfaceProvider(previewView.surfaceProvider)
 
             val imageAnalyzer = ImageAnalysis.Builder()
+
+                .setTargetAspectRatio(AspectRatio.RATIO_4_3)
 
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
 
@@ -120,21 +132,18 @@ class MainActivity : ComponentActivity() {
 
             }
 
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
             cameraProvider.unbindAll()
 
             cameraProvider.bindToLifecycle(
-
                 this,
                 cameraSelector,
                 preview,
                 imageAnalyzer
-
             )
 
         }, ContextCompat.getMainExecutor(this))
     }
+
     private fun requestPermissions() {
 
         val permissions = arrayOf(
@@ -144,12 +153,10 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_FINE_LOCATION
         )
 
-        ActivityCompat.requestPermissions(
-            this,
-            permissions,
-            1
-        )
+        ActivityCompat.requestPermissions(this, permissions, 1)
+
     }
+
     private fun processImage(imageProxy: ImageProxy) {
 
         val mediaImage = imageProxy.image
@@ -163,6 +170,7 @@ class MainActivity : ComponentActivity() {
 
             val options = FaceDetectorOptions.Builder()
                 .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
                 .build()
 
             val detector = FaceDetection.getClient(options)
@@ -174,9 +182,7 @@ class MainActivity : ComponentActivity() {
                     if (faces.isNotEmpty()) {
 
                         val face = faces.maxByOrNull {
-
                             it.boundingBox.width() * it.boundingBox.height()
-
                         }
 
                         face?.let {
@@ -186,12 +192,24 @@ class MainActivity : ComponentActivity() {
                             val centerX = box.centerX()
                             val centerY = box.centerY()
 
-                            Log.d("FACE", "X:$centerX Y:$centerY")
+                            bluetoothManager.sendCoordinates(centerX, centerY)
 
-                            bluetoothManager.sendCoordinates(
-                                centerX,
-                                centerY
-                            )
+                            val leftEye = it.leftEyeOpenProbability ?: 1f
+                            val rightEye = it.rightEyeOpenProbability ?: 1f
+
+                            val currentTime = System.currentTimeMillis()
+
+                            if (leftEye < 0.4f && rightEye < 0.4f) {
+
+                                if (currentTime - lastBlinkTime > blinkCooldown) {
+
+                                    bluetoothManager.sendBlink()
+
+                                    lastBlinkTime = currentTime
+
+                                }
+
+                            }
 
                             runOnUiThread {
 
