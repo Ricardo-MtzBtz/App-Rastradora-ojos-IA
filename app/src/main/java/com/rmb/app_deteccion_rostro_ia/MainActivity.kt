@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
         requestPermissions()
 
         switchCameraButton.setOnClickListener {
+
             cameraSelector =
                 if (cameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA)
                     CameraSelector.DEFAULT_BACK_CAMERA
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startCamera() {
+
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
@@ -97,8 +99,8 @@ class MainActivity : ComponentActivity() {
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
 
-            analyzer.setAnalyzer(cameraExecutor) { imageProxy ->
-                processImage(imageProxy)
+            analyzer.setAnalyzer(cameraExecutor) {
+                processImage(it)
             }
 
             cameraProvider.unbindAll()
@@ -147,22 +149,19 @@ class MainActivity : ComponentActivity() {
                         val w = imageProxy.width
                         val h = imageProxy.height
 
-                        // NORMALIZACIÓN (como Python)
                         val normX = cx.toFloat() / w
                         val normY = cy.toFloat() / h
 
-                        val XL = (normX * (120 - 70) + 70).toInt()
-                        val YL = ((1 - normY) * (125 - 60) + 60).toInt()
-
-                        val XR = XL
-                        val YR = YL
-
-                        bluetoothManager.sendData("$XL,$YL,$XR,$YR\n")
-
                         // ======================
+                        // TUS RANGOS
+                        // ======================
+
+                        val X = ((1 - normX) * (135 - 45) + 45).toInt()
+                        val Y = ((1 - normY) * (125 - 50) + 50).toInt()
+
+                        bluetoothManager.sendData("$X,$Y\n")
+
                         // PARPADEO
-                        // ======================
-
                         val leftEye = it.leftEyeOpenProbability ?: 1f
                         val rightEye = it.rightEyeOpenProbability ?: 1f
 
@@ -170,6 +169,7 @@ class MainActivity : ComponentActivity() {
 
                         if (leftEye < 0.4f && rightEye < 0.4f) {
                             if (now - lastBlinkTime > blinkCooldown) {
+
                                 bluetoothManager.sendData("BLINK\n")
                                 lastBlinkTime = now
                             }
