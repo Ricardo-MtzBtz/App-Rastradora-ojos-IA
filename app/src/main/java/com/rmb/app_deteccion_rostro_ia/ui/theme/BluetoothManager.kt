@@ -1,88 +1,38 @@
 package com.rmb.app_deteccion_rostro_ia
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothSocket
-import android.util.Log
+import android.bluetooth.*
 import java.io.OutputStream
 import java.util.*
 
 class BluetoothManager {
 
-    private var bluetoothAdapter: BluetoothAdapter? = null
-    private var bluetoothSocket: BluetoothSocket? = null
-    private var outputStream: OutputStream? = null
+    private val deviceName = "ESP32_OJOS_IA"
 
-    private val deviceName = "ESP32_ROBOT"
+    private val uuid: UUID =
+        UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+
+    private var socket: BluetoothSocket? = null
+    private var outputStream: OutputStream? = null
 
     fun connect(): Boolean {
 
-        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        val adapter = BluetoothAdapter.getDefaultAdapter()
 
-        if (bluetoothAdapter == null) {
-            Log.d("BT","Bluetooth no disponible")
-            return false
-        }
+        val device = adapter.bondedDevices.firstOrNull {
+            it.name == deviceName
+        } ?: return false
 
-        val pairedDevices: Set<BluetoothDevice> = bluetoothAdapter!!.bondedDevices
+        socket = device.createRfcommSocketToServiceRecord(uuid)
 
-        for (device in pairedDevices) {
+        adapter.cancelDiscovery()
+        socket!!.connect()
 
-            if (device.name == deviceName) {
+        outputStream = socket!!.outputStream
 
-                try {
-
-                    val uuid = device.uuids[0].uuid
-
-                    bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
-
-                    bluetoothSocket!!.connect()
-
-                    outputStream = bluetoothSocket!!.outputStream
-
-                    Log.d("BT","ESP32 conectado")
-
-                    return true
-
-                } catch (e: Exception) {
-
-                    Log.d("BT","Error conectando")
-
-                    return false
-                }
-            }
-        }
-
-        return false
+        return true
     }
 
-    fun sendCoordinates(x: Int, y: Int) {
-
-        try {
-
-            val data = "$x,$y\n"
-
-            outputStream?.write(data.toByteArray())
-
-        } catch (e: Exception) {
-
-            Log.d("BT","Error enviando datos")
-
-        }
-
-    }
-
-    fun sendBlink(){
-
-        try {
-
-            outputStream?.write("B\n".toByteArray())
-
-        } catch (e: Exception) {
-
-            e.printStackTrace()
-
-        }
-
+    fun sendData(data: String) {
+        outputStream?.write(data.toByteArray())
     }
 }
